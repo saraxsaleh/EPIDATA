@@ -1,0 +1,73 @@
+---
+title: "Data_cleaning"
+format: html
+---
+
+```{r}
+library(here)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(rstatix)
+library(janitor)
+library(dplyr)
+library(knitr)
+library(haven)
+```
+
+###Load data
+
+```{r}
+NHANES_Demo_1718 <- read_xpt("Data/DEMO_J.xpt")
+NHANES_Demo_1516 <- read_xpt("Data/DEMO_I.xpt")
+NHANES_Demo_1314 <- read_xpt("Data/DEMO_H.xpt")
+```
+
+```{r}
+NHANES_BMI_1718 <- read_xpt("Data/BMX_J.xpt")
+NHANES_BMI_1516 <- read_xpt("Data/BMX_I.xpt")
+NHANES_BMI_1314 <- read_xpt("Data/BMX_H.xpt")
+```
+
+###DM(Diabetes Melliitus)
+
+```{r}
+NHANES_DM_1718 <- read_xpt("Data/DIQ_J.xpt")
+NHANES_DM_1516 <- read_xpt("Data/DIQ_I.xpt")
+NHANES_DM_1314 <- read_xpt("Data/DIQ_H.xpt")
+```
+
+## HINSUR
+```{r}
+NHANES_Hinsur_1718 <- read_xpt("Data/HIQ_J.xpt")
+NHANES_Hinsur_1516 <- read_xpt("Data/HIQ_I.xpt")
+NHANES_Hinsur_1314 <- read_xpt("Data/HIQ_H.xpt")
+```
+
+## (Medcon)
+```{R}
+NHANES_MC_1718 <- read_xpt("Data/MCQ_J.xpt")
+NHANES_MC_1516 <- read_xpt("Data/MCQ_I.xpt")
+NHANES_MC_1314 <- read_xpt("Data/MCQ_H.xpt")
+```
+
+## Physical Activty
+
+```{r}
+NHANES_PA_1718 <- read_xpt("Data/PAQ_J.xpt")
+NHANES_PA_1516 <- read_xpt("Data/PAQ_I.xpt")
+NHANES_PA_1314 <- read_xpt("Data/PAQ_H.xpt")
+```
+
+#Smoking
+```{R}
+NHANES_SMK_1718 <- read_xpt("Data/SMQ_J.xpt")
+NHANES_SMK_1516 <- read_xpt("Data/SMQ_I.xpt")
+NHANES_SMK_1314 <- read_xpt("Data/SMQ_H.xpt")
+```
+
+```{R}
+
+```
+
+
