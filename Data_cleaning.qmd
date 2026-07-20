@@ -67,7 +67,8 @@ NHANES_SMK_1314 <- read_xpt("Data/SMQ_H.xpt")
 ```
 
 ```{R}
-
+BMI_vars <- NHANES_BMI_merged %>% select( SEQN, BMXBMI)
+SMK_vars <- NHANES_SMK_merged %>% select(SEQN, SMQ020, SMQ621)
 ```
 
 
