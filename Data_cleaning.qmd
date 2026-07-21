@@ -15,6 +15,7 @@ library(knitr)
 library(haven)
 ```
 
+
 ###Load data
 
 ```{r}
@@ -67,7 +68,119 @@ NHANES_SMK_1314 <- read_xpt("Data/SMQ_H.xpt")
 ```
 
 ```{R}
-
+NHANES_demo_merged <- bind_rows(NHANES_Demo_1314, 
+                         NHANES_Demo_1516, 
+                         NHANES_Demo_1718)
 ```
 
+```{r}
+NHANES_BMI_merged <- bind_rows(NHANES_BMI_1314, 
+                         NHANES_BMI_1516, 
+                         NHANES_BMI_1718)
+```
+
+
+```{r}
+NHANES_DM_merged <- bind_rows(NHANES_DM_1314, 
+                         NHANES_DM_1516, 
+                         NHANES_DM_1718)
+```
+
+```{r}
+NHANES_Hinsur_merged <- bind_rows(NHANES_Hinsur_1314, 
+                         NHANES_Hinsur_1516, 
+                         NHANES_Hinsur_1718)
+```
+
+```{R}
+NHANES_MC_merged <- bind_rows(NHANES_MC_1314, 
+                         NHANES_MC_1516, 
+                         NHANES_MC_1718)
+```
+
+```{r}
+NHANES_PA_merged <- bind_rows(NHANES_PA_1314, 
+                         NHANES_PA_1516, 
+                         NHANES_PA_1718)
+```
+
+```{r}
+NHANES_SMK_merged <- bind_rows(NHANES_SMK_1314, 
+                         NHANES_SMK_1516, 
+                         NHANES_SMK_1718)
+```
+
+
+## Create analytic sample
+
+```{R}
+BMI_vars <- NHANES_BMI_merged %>% select( SEQN, BMXBMI)
+SMK_vars <- NHANES_SMK_merged %>% select(SEQN, SMQ020, SMQ621)
+DM_vars <- NHANES_DM_merged %>% select(SEQN, DIQ010)
+Hinsur_vars <- NHANES_Hinsur_merged %>% select(SEQN , HIQ011)
+MC_vars <- NHANES_MC_merged %>% select(SEQN, MCQ160A, MCQ195)
+PA_vars <- NHANES_PA_merged %>% select(SEQN, PAQ605, PAQ610, PAQ620, PAD615, PAQ625, PAD630)
+```
+
+
+#MET Score coding
+
+```{R}
+PA_vars$MET_vig <- PA_vars$PAD615*8
+PA_vars$MET_mod <- PA_vars$PAD630 * 4
+PA_vars$MET_total <- PA_vars$MET_vig + PA_vars$MET_mod
+```
+
+
+```{r}
+NHANES_analytic <- NHANES_demo_merged %>%
+  left_join(BMI_vars,   by = "SEQN") %>%
+  left_join(SMK_vars,   by = "SEQN") %>%
+  left_join(DM_vars,    by = "SEQN") %>%
+  left_join(Hinsur_vars, by = "SEQN") %>%
+  left_join(MC_vars,    by = "SEQN") %>%
+  left_join(PA_vars,    by = "SEQN")
+
+NHANES_analytic %>%
+  clean_names()
+```
+
+#Total: 29400 Participants of 64 variables
+
+
+```{R}
+# of cases age 
+NHANES_analytic %>%
+  filter(RIDAGEYR >= 20 & RIDAGEYR <= 65) %>%
+  nrow()
+
+NHANES_analytic
+```
+20-65 yo : 13141
+
+
+#Mutate / Recode
+
+Arthritis: MCQ 160a : 1 = Yes, 2= No , Other = 0
+
+
+```{r}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(
+    Arthritis = case_when(
+      MCQ160A == 1 ~ 1,
+      MCQ160A == 2 ~ 2,
+      MCQ160A == 9 ~ 0,
+      is.na(MCQ160A) ~ 0
+    ),
+    Osteo_yn = if_else(MCQ195 == 1, 1, 0, missing = 0)
+    )
+```
+
+```{R}
+NHANES_analytic %>%
+  filter(Osteo_yn == 1) %>%
+  nrow()
+```
+Total yes osteo 2021
 
