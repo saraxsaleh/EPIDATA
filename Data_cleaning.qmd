@@ -13,6 +13,7 @@ library(janitor)
 library(dplyr)
 library(knitr)
 library(haven)
+library(gt)
 ```
 
 
@@ -131,6 +132,25 @@ PA_vars$MET_mod <- PA_vars$PAD630 * 4
 PA_vars$MET_total <- PA_vars$MET_vig + PA_vars$MET_mod
 ```
 
+#BMI catagorical
+
+Underweight/Normal = 0
+Overweight = 1
+Obese = 2
+
+```{R}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(BMI_cat = case_when(
+    BMXBMI < 25 ~ "Underweight/Normal",
+    BMXBMI >= 25 & BMXBMI <= 30 ~ "Overweight",
+    BMXBMI > 30 ~ "Obese",
+  ))
+```
+
+```{R}
+table(NHANES_analytic$BMI_cat) 
+```
+
 
 ```{r}
 NHANES_analytic <- NHANES_demo_merged %>%
@@ -169,13 +189,41 @@ NHANES_analytic <- NHANES_analytic %>%
   mutate(
     Arthritis = case_when(
       MCQ160A == 1 ~ 1,
-      MCQ160A == 2 ~ 2,
+      MCQ160A == 2 ~ 0,
       MCQ160A == 9 ~ 0,
       is.na(MCQ160A) ~ 0
     ),
-    Osteo_yn = if_else(MCQ195 == 1, 1, 0, missing = 0)
+    Osteo_yn = if_else(MCQ195 == 1, 1, 0, missing = 0),
+    age_cat = case_when(
+      RIDAGEYR >= 20 & RIDAGEYR <= 29 ~ "20-29",
+      RIDAGEYR >= 30 & RIDAGEYR <= 44 ~ "30-44",
+      RIDAGEYR >= 45 & RIDAGEYR <= 64 ~ "45-64",
+      RIDAGEYR >= 65 ~ "65+"
+    ),
+    Hinsur_yn = case_when(
+      HIQ011 == 1 ~ "Yes",
+      HIQ011 == 2 ~ "No"
+    ),
+    smk_status = case_when(
+      SMQ020 == 1 ~ "Yes"
+      SMQ020 == 2 ~ "No"
+    ),
+     RE_cat = case_when(
+       RIDRETH3 == 1 ~ "Mexican American",
+       RIDRETH3 == 3 ~ "White",
+       RIDRETH3 == 4 ~ "Black",
+       RIDRETH3 == 6 ~ "Asian",
+       RIDRETH3 == 2 & RIDRETH3 == 7 ~ "Mixed/Other"
+     ),
+    
     )
 ```
+
+#Arthritis type
+
+Osteo = 1
+All other = 0
+
 
 ```{R}
 NHANES_analytic %>%
@@ -183,4 +231,8 @@ NHANES_analytic %>%
   nrow()
 ```
 Total yes osteo 2021
+
+```{r}
+table(NHANES_analytic$Osteo_yn)
+```
 
