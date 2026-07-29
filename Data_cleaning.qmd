@@ -1,6 +1,8 @@
 ---
 title: "Data_cleaning"
 format: html
+self-contained : true
+editor: visual
 ---
 
 ```{r}
@@ -13,6 +15,9 @@ library(janitor)
 library(dplyr)
 library(knitr)
 library(haven)
+library(gt)
+library(gtsummary)
+library(survey)
 ```
 
 ###Load data
@@ -38,6 +43,7 @@ NHANES_DM_1314 <- read_xpt("Data/DIQ_H.xpt")
 ```
 
 ## HINSUR
+
 ```{r}
 NHANES_Hinsur_1718 <- read_xpt("Data/HIQ_J.xpt")
 NHANES_Hinsur_1516 <- read_xpt("Data/HIQ_I.xpt")
@@ -45,6 +51,7 @@ NHANES_Hinsur_1314 <- read_xpt("Data/HIQ_H.xpt")
 ```
 
 ## (Medcon)
+
 ```{R}
 NHANES_MC_1718 <- read_xpt("Data/MCQ_J.xpt")
 NHANES_MC_1516 <- read_xpt("Data/MCQ_I.xpt")
@@ -60,15 +67,413 @@ NHANES_PA_1314 <- read_xpt("Data/PAQ_H.xpt")
 ```
 
 #Smoking
+
 ```{R}
 NHANES_SMK_1718 <- read_xpt("Data/SMQ_J.xpt")
 NHANES_SMK_1516 <- read_xpt("Data/SMQ_I.xpt")
 NHANES_SMK_1314 <- read_xpt("Data/SMQ_H.xpt")
 ```
 
+#Occupation
+
+```{r}
+NHANES_OC_1718 <- read_xpt("Data/OCQ_J.xpt")
+NHANES_OC_1516 <- read_xpt("Data/OCQ_I.xpt")
+NHANES_OC_1314 <- read_xpt("Data/OCQ_H.xpt")
+```
+
+```{R}
+NHANES_demo_merged <- bind_rows(NHANES_Demo_1314, 
+                         NHANES_Demo_1516, 
+                         NHANES_Demo_1718)
+```
+
+```{r}
+NHANES_BMI_merged <- bind_rows(NHANES_BMI_1314, 
+                         NHANES_BMI_1516, 
+                         NHANES_BMI_1718)
+```
+
+```{r}
+NHANES_DM_merged <- bind_rows(NHANES_DM_1314, 
+                         NHANES_DM_1516, 
+                         NHANES_DM_1718)
+```
+
+```{r}
+NHANES_Hinsur_merged <- bind_rows(NHANES_Hinsur_1314, 
+                         NHANES_Hinsur_1516, 
+                         NHANES_Hinsur_1718)
+```
+
+```{R}
+NHANES_MC_merged <- bind_rows(NHANES_MC_1314, 
+                         NHANES_MC_1516, 
+                         NHANES_MC_1718)
+```
+
+```{r}
+NHANES_PA_merged <- bind_rows(NHANES_PA_1314, 
+                         NHANES_PA_1516, 
+                         NHANES_PA_1718)
+```
+
+```{r}
+NHANES_SMK_merged <- bind_rows(NHANES_SMK_1314, 
+                         NHANES_SMK_1516, 
+                         NHANES_SMK_1718)
+```
+
+```{r}
+NHANES_OC_merged <- bind_rows(NHANES_OC_1314, 
+                         NHANES_OC_1516, 
+                         NHANES_OC_1718)
+```
+
+## Create analytic sample
+
 ```{R}
 BMI_vars <- NHANES_BMI_merged %>% select( SEQN, BMXBMI)
 SMK_vars <- NHANES_SMK_merged %>% select(SEQN, SMQ020, SMQ621)
+DM_vars <- NHANES_DM_merged %>% select(SEQN, DIQ010)
+Hinsur_vars <- NHANES_Hinsur_merged %>% select(SEQN , HIQ011)
+MC_vars <- NHANES_MC_merged %>% select(SEQN, MCQ160A, MCQ195)
+PA_vars <- NHANES_PA_merged %>% select(SEQN, PAQ605, PAQ610, PAQ620, PAD615, PAQ625, PAD630)
+OC_vars <- NHANES_OC_merged %>% select(SEQN, OCD150)
+```
+
+#MET Score coding
+
+```{r}
+PA_vars <- PA_vars %>%
+  mutate(
+    vig_days = if_else(PAQ610 %in% c(77, 99), NA_real_, as.numeric(PAQ610)),
+    vig_min  = if_else(PAD615 %in% c(7777, 9999), NA_real_, as.numeric(PAD615)),
+    mod_days = if_else(PAQ625 %in% c(77, 99), NA_real_, as.numeric(PAQ625)),
+    mod_min  = if_else(PAD630 %in% c(7777, 9999), NA_real_, as.numeric(PAD630)),
+    MET_total = (vig_days * vig_min * 8) + (mod_days * mod_min * 4)
+  )
 ```
 
 
+```{r}
+PA_vars <- PA_vars %>%
+  mutate(
+    MET_total = if_else(PAQ620 == 2 & is.na(MET_total),
+                         vig_days * vig_min * 8, MET_total),
+    MET_total = if_else(PAQ605 == 2 & is.na(MET_total),
+                         mod_days * mod_min * 4, MET_total)
+  )
+```
+
+
+```{r}
+NHANES_analytic <- NHANES_demo_merged %>%
+  left_join(BMI_vars,   by = "SEQN") %>%
+  left_join(SMK_vars,   by = "SEQN") %>%
+  left_join(DM_vars,    by = "SEQN") %>%
+  left_join(Hinsur_vars, by = "SEQN") %>%
+  left_join(MC_vars,    by = "SEQN") %>%
+  left_join(PA_vars,    by = "SEQN") %>%
+  left_join(OC_vars, by = "SEQN")
+
+```
+
+#BMI catagorical
+
+Underweight/Normal = 0 Overweight = 1 Obese = 2
+
+```{R}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(BMI_cat = case_when(
+    BMXBMI < 25 ~ "Underweight/Normal",
+    BMXBMI >= 25 & BMXBMI <= 30 ~ "Overweight",
+    BMXBMI > 30 ~ "Obese",
+    TRUE ~ NA_character_
+  ))
+```
+
+#Mutate / Recode
+
+Arthritis: MCQ 160a : 1 = Yes, 2= No , Other = 0
+
+```{r}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(
+    Arthritis = case_when(
+      MCQ160A == 1 ~ 1,
+      MCQ160A == 2 ~ 0,
+      MCQ160A == 9 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    Osteoarthritis = case_when(
+      MCQ195 == 1               ~ 1,
+      MCQ195 %in% c(2, 3, 4)    ~ 0,
+      MCQ195 %in% c(7, 9)       ~ NA_real_,
+      TRUE                      ~ NA_real_
+    ),
+    Osteoarthritis = if_else(MCQ160A == 2, 0, Osteoarthritis),
+    age_cat = case_when(
+      RIDAGEYR >= 20 & RIDAGEYR <= 29 ~ "20-29",
+      RIDAGEYR >= 30 & RIDAGEYR <= 44 ~ "30-44",
+      RIDAGEYR >= 45 & RIDAGEYR <= 64 ~ "45-64",
+      RIDAGEYR >= 65 ~ "65+"
+    ),
+    Hinsur_yn = case_when(
+      HIQ011 == 1 ~ "Yes",
+      HIQ011 == 2 ~ "No",
+      TRUE ~ NA_character_
+    ),
+    smk_status = case_when(
+      SMQ020 == 1 ~ "Yes",
+      SMQ020 == 2 ~ "No"
+    ),
+     RE_cat = case_when(
+       RIDRETH3 == 1 ~ "Mexican American",
+       RIDRETH3 == 3 ~ "White",
+       RIDRETH3 == 4 ~ "Black",
+       RIDRETH3 == 6 ~ "Asian",
+       RIDRETH3 == 2 |
+       RIDRETH3 == 7 ~ "Mixed/Other"
+     ),
+    Sex_cat = case_when(
+      RIAGENDR == 1 ~ "Male",
+      RIAGENDR == 2 ~ "Female"
+    ),
+    Edu_yn = case_when(
+      DMDEDUC2 == 5 ~ "College graduate and above",
+      DMDEDUC2 == 1 ~ "Less than college education",
+      DMDEDUC2 == 2 ~ "Less than college education",
+      DMDEDUC2 == 3 ~ "Less than college education",
+      DMDEDUC2 == 4 ~ "Less than college education",
+      DMDEDUC2 == 7 ~ NA_character_,
+      DMDEDUC2 == 9 ~ NA_character_,
+      TRUE ~ NA_character_
+    ),
+    Income = case_when(
+      INDFMPIR > 0 & INDFMPIR <= 1.3 ~ "<130% FPL",
+      INDFMPIR > 1.3 & INDFMPIR <= 3.5 ~ "130-350% FPL",
+      INDFMPIR > 3.5 ~ ">350% FPL"
+    ),
+    Diabetes = case_when(
+      DIQ010 == 1 ~ "Yes",
+      DIQ010 == 2 ~ "No",
+      DIQ010 == 3 ~ "No",
+      DIQ010 == 9 ~ "No",
+      TRUE ~ NA_character_
+    ),
+    MET_tertile = ntile(MET_total, 3),  # splits into 3 equal groups
+         MET_tertile = factor(MET_tertile,
+                              levels = c(1, 2, 3),
+                              labels = c("Low", "Medium", "High")),
+    emp_st = case_when(
+      OCD150 == 1 |
+        OCD150 == 2 ~ "Currently working",
+      OCD150 == 3 |
+        OCD150 == 4 |
+        OCD150 == 7 |
+        OCD150 == 9 ~"Not currently working",
+      TRUE ~ NA_character_
+    ),
+    newweight = WTMEC2YR / 3 
+    )
+```
+
+```{r}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(subpop1 = if_else(!is.na(WTMEC2YR) & WTMEC2YR > 0, 1, 0))
+
+NHANES_analytic <- NHANES_analytic %>% 
+   mutate(subpop2 = case_when(
+    subpop1 == 1 &
+    RIDAGEYR >= 20 & RIDAGEYR <= 64 &
+    OCD150 %in% c(1, 2)    ~ 1,
+    TRUE                    ~ 0
+  ))
+
+NHANES_analytic %>%
+  filter(subpop2 == 1) %>%
+  nrow()
+
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(subpop3 = if_else(subpop2 == 1 & !is.na(Osteoarthritis), 1, 0))
+```
+
+8950 with correct age and has arthritis
+
+# Missing values
+
+```{r}
+NHANES_analytic<- NHANES_analytic %>%
+  mutate(miss_dv = case_when(
+    is.na(Osteoarthritis)  ~ 1,  
+    .default = 0))
+
+
+
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(miss_iv = case_when(
+    is.na(MET_total) ~ 1,  
+    .default= 0)) 
+
+```
+
+Counts of missing
+
+```{r}
+NHANES_analytic %>%
+  filter(subpop1 == 1 & miss_dv == 0) %>%
+  nrow()
+
+NHANES_analytic %>%
+  filter(subpop1 == 1 & miss_iv == 0) %>%
+  nrow()
+```
+
+#subpop2
+
+```{r}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(subpop2 = case_when(
+    subpop1 == 1 & miss_dv == 0 &
+      miss_iv == 0 ~ 1,
+    .default = 0
+  ))
+
+NHANES_analytic %>%
+  filter(subpop2 == 1) %>%
+  nrow()
+```
+
+#Svey Design
+
+```{r}
+des <- svydesign(ids = ~1, weights = ~newweight, data = NHANES_analytic)
+cuts <- svyquantile(~MET_total, des, quantiles = c(1/3, 2/3), na.rm = TRUE)
+cut_lo <- as.numeric(cuts$MET_total[1, "quantile"])
+cut_hi <- as.numeric(cuts$MET_total[2, "quantile"])
+
+```
+
+
+```{r}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(
+    met_cat = case_when(
+      is.na(MET_total)                 ~ NA_real_,
+      MET_total <= cut_lo               ~ 1,
+      MET_total > cut_lo & MET_total <= cut_hi ~ 2,
+      MET_total > cut_hi                ~ 3
+    ),
+    met_cat = if_else(PAQ605 == 2 & PAQ620 == 2, 0, met_cat)
+  )
+```
+
+#Total: 29400 Participants of 64 variables
+
+```{R}
+# of cases age 
+NHANES_analytic %>%
+  filter(RIDAGEYR >= 20 & RIDAGEYR <= 65) %>%
+  nrow()
+
+```
+
+20-65 yo : 13141
+
+#Arthritis type
+
+
+```{R}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(subpop4 = if_else(subpop3 == 1 & !is.na(met_cat), 1, 0))
+
+cat("subpop4 n =", sum(NHANES_analytic$subpop4 == 1), "\n")
+```
+
+
+```{R}
+NHANES_analytic <- NHANES_analytic %>%
+  mutate(subpop5 = if_else(
+    subpop4 == 1 &
+      DMDEDUC2 <= 5 &
+      RIDRETH1 <= 5 &
+      RIAGENDR <= 2 &
+      !is.na(RIDAGEYR) &
+      !is.na(INDFMPIR) &
+      !is.na(BMXBMI) &
+      SMQ020 <= 2 &
+      HIQ011 <= 2,
+    1, 0
+  ))
+
+cat("subpop5 n =", sum(NHANES_analytic$subpop5 == 1), "\n")
+```
+
+
+```{r}
+# Convert survey design variables to dataframe for tbl_summary
+NHANES_analytic%>%
+  filter(subpop5 == 1) %>%
+  select(MET_total, Hinsur_yn,
+         RE_cat, BMI_cat, age_cat, smk_status,
+         Sex_cat, Income, Edu_yn, Diabetes,
+         Osteoarthritis, MET_tertile) %>%
+  tbl_summary(
+    by      = Osteoarthritis,
+    missing = "no",
+    label = list(
+      MET_tertile    ~ "MET score by Tertiles",
+      MET_total  ~ "Total MET score",
+      Hinsur_yn  ~ "Health Insurance",
+      RE_cat     ~ "Race and Ethnicity",
+      BMI_cat    ~ "BMI",
+      age_cat    ~ "Age",
+      smk_status ~ "Smoking Status",
+      Sex_cat    ~ "Sex",
+      Income     ~ "Income",
+      Edu_yn     ~ "Higher Education",
+      Diabetes   ~ "Diabetes"
+    )
+  ) %>%
+  add_overall() %>%
+  bold_labels() %>%
+  as_gt() %>%
+  tab_header("Descriptive Characteristics for Analytic Sample between 20-64 based on Osteoarthritis")
+  #gtsave(filename = "Table1_byOA.docx")
+
+```
+
+### Table 1 by exposure
+
+```{r}
+# Convert survey design variables to dataframe for tbl_summary
+NHANES_analytic %>%
+  filter(subpop5 == 1) %>%
+  select(MET_total, Hinsur_yn,
+         RE_cat, BMI_cat, age_cat, smk_status,
+         Sex_cat, Income, Edu_yn, Diabetes,
+         Osteoarthritis, MET_tertile) %>%
+  tbl_summary(
+    by      = MET_tertile,
+    missing = "no",
+    label = list(
+      Osteoarthritis ~ "Has Osteoarthritis?",
+      MET_total  ~ "Total MET score",
+      Hinsur_yn  ~ "Health Insurance",
+      RE_cat     ~ "Race and Ethnicity",
+      BMI_cat    ~ "BMI",
+      age_cat    ~ "Age",
+      smk_status ~ "Smoking Status",
+      Sex_cat    ~ "Sex",
+      Income     ~ "Income",
+      Edu_yn     ~ "Higher Education",
+      Diabetes   ~ "Diabetes"
+    )
+  ) %>%
+  add_overall() %>%
+  bold_labels() %>%
+  as_gt() %>%
+  tab_header("Descriptive Characteristics for Analytic Sample between 20-64 by MET level") 
+ #  gtsave(filename = "Table1_OA_byMET.docx")
+```
