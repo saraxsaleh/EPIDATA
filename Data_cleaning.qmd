@@ -20,6 +20,7 @@ library(gtsummary)
 library(survey)
 library(broom)
 library(broom.helpers)
+library(jtools)
 ```
 
 ###Load data
@@ -628,9 +629,10 @@ tab_header(
 ##Creating table 3
 
 # Make stratified models
+
 ```{r}
 # Stratum 1 — Health Insurance
-model_male <- svyglm(
+model_Hinsur <- svyglm(
   Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
                    BMI_cat + smk_status + Sex_cat + 
                    Income + Edu_yn + Diabetes,
@@ -639,7 +641,7 @@ model_male <- svyglm(
 )
 
 # Stratum 2 — No Health Insurance
-model_female <- svyglm(
+model_Hinsur_no <- svyglm(
   Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
                    BMI_cat + smk_status + Sex_cat + 
                    Income + Edu_yn + Diabetes,
@@ -648,7 +650,7 @@ model_female <- svyglm(
 )
 
 #Stratum 3 -> Has higher education
-model_male <- svyglm(
+model_Edu <- svyglm(
   Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
                    BMI_cat + smk_status + Sex_cat + 
                    Income + Diabetes + Hinsur_yn,
@@ -657,7 +659,7 @@ model_male <- svyglm(
 )
 
 # Stratum 4 — No Higher Education
-model_female <- svyglm(
+model_no_edu<- svyglm(
   Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
                    BMI_cat + smk_status + Sex_cat + 
                    Income + Hinsur_yn + Diabetes,
@@ -666,23 +668,65 @@ model_female <- svyglm(
 )
 ```
 
-###Obtain counts and proprtions
+##Obtain data from models
+
+#Health insurance model
 ```{r}
-# Counts and weighted % for each stratum
-get_counts <- function(des, stratum_var, stratum_val) {
-  sub <- subset(des, get(stratum_var) == stratum_val)
+jtools::summ(model_Hinsur, 
+             confint = T,
+             ci.width = 0.95, 
+             exp = TRUE)
+```
+
+#No Health Insurance
+```{r}
+jtools::summ(model_Hinsur_no, 
+             confint = T,
+             ci.width = 0.95, 
+             exp = TRUE)
+```
+#Higher Education
+
+```{r}
+jtools::summ(model_Edu, 
+             confint = T,
+             ci.width = 0.95, 
+             exp = TRUE)
+```
+```{r}
+jtools::summ(model_no_edu, 
+             confint = T,
+             ci.width = 0.95, 
+             exp = TRUE)
+```
+
+
+###Obtain counts and proprtions
+
+```{r}
+get_svy_counts <- function(design) {
   
-  # Total N per MET tertile
-  tot <- svyby(~Osteoarthritis, ~MET_tertile, sub, 
-               svytotal, na.rm = TRUE)
+  # Unweighted n per tertile
+  n_tot <- svyby(~Osteoarthritis, ~MET_tertile, des,
+                 unwtd.count, na.rm = TRUE) %>%
+    as.data.frame()
   
-  # Weighted % per MET tertile
-  pct <- svyby(~Osteoarthritis, ~MET_tertile, sub,
-               svymean, na.rm = TRUE)
+  # Weighted % in each tertile
+  pct_tot <- svyby(~MET_tertile, ~MET_tertile, des,
+                   svymean, na.rm = TRUE) %>%
+    as.data.frame()
   
-  list(total = tot, pct = pct)
+  # Weighted % with outcome per tertile
+  pct_out <- svyby(~Osteoarthritis, ~MET_tertile, des,
+                   svymean, na.rm = TRUE) %>%
+    as.data.frame()
+  
+  list(n = n_tot, pct = pct_tot, outcome = pct_out)
 }
 
-counts_male   <- get_counts(subpop_design, "Sex_cat", "Male")
-counts_female <- get_counts(subpop_design, "Sex_cat", "Female")
+counts_insured   <- get_svy_counts(subset(analytic_subpop, Hinsur_yn == "Yes"))
+counts_uninsured <- get_svy_counts(subset(analytic_subpop, Hinsur_yn == "No"))
+counts_edu_yes   <- get_svy_counts(subset(analytic_subpop, Edu_yn == "College graduate and above"))
+counts_edu_no    <- get_svy_counts(subset(analytic_subpop, Edu_yn == "Less than college education"))
 ```
+
