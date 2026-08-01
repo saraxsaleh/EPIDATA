@@ -18,6 +18,8 @@ library(haven)
 library(gt)
 library(gtsummary)
 library(survey)
+library(broom)
+library(broom.helpers)
 ```
 
 ###Load data
@@ -144,7 +146,6 @@ OC_vars <- NHANES_OC_merged %>% select(SEQN, OCD150)
 
 #Create sample
 
-
 ```{r}
 NHANES_analytic <- NHANES_demo_merged %>%
   left_join(BMI_vars,   by = "SEQN") %>%
@@ -157,9 +158,7 @@ NHANES_analytic <- NHANES_demo_merged %>%
 
 ```
 
-
 ###Creating MET score
-
 
 ```{r}
 NHANES_analytic <- NHANES_analytic %>%
@@ -202,7 +201,6 @@ NHANES_analytic <- NHANES_analytic %>%
     )
   )
 ```
-
 
 #BMI catagorical
 
@@ -361,10 +359,11 @@ NHANES_analytic %>%
   filter(subpop2 == 1) %>%
   nrow()
 ```
+
 #9812 w employment data and valid MEC (Subpop2)
 
-
 #Create subpop for age
+
 ```{r}
 NHANES_analytic <- NHANES_analytic %>% 
    mutate(subpop3 = case_when(
@@ -379,9 +378,7 @@ NHANES_analytic %>%
   nrow()
 ```
 
-
 8523 with correct age and employed (Subpop3)
-
 
 ```{r}
 ##Making subpop 4 ( validated exposure MET)
@@ -400,7 +397,6 @@ NHANES_analytic %>%
 
 8523 with correct age and employed with valid PA data (Subpop4)
 
-
 #subpop5 (Valid outcome)
 
 ```{r}
@@ -416,10 +412,11 @@ NHANES_analytic %>%
   filter(subpop5 == 1) %>%
   nrow()
 ```
+
 #8200 participants with valid inclusion and no omissing IV or DV
 
-
 #Making subpop 6 (Missing covariates)
+
 ```{r}
 NHANES_analytic <- NHANES_analytic %>%
   mutate(subpop6 = case_when(
@@ -433,7 +430,8 @@ NHANES_analytic %>%
   filter(subpop6 == 1) %>%
   nrow()
 ```
-#7411 with completed data => final analytical sample
+
+#7411 with completed data =\> final analytical sample
 
 #Svey Design
 
@@ -445,12 +443,12 @@ cut_hi <- as.numeric(cuts$MET_total[2, "quantile"])
 
 ```
 
-
 ```{r}
 NHANES_analytic <- NHANES_analytic %>%
   mutate(
     met_cat = case_when(
       is.na(MET_total)                 ~ NA_real_,
+      MET_total == 0 ~ 0,
       MET_total <= cut_lo               ~ 1,
       MET_total > cut_lo & MET_total <= cut_hi ~ 2,
       MET_total > cut_hi                ~ 3
@@ -466,7 +464,6 @@ OAsvyset <- svydesign(ids = ~1, weights = ~newweight, data = NHANES_analytic)
 
 analytic_subpop <- subset(OAsvyset, subpop6 == 1)
 ```
-
 
 ```{r}
 # Convert survey design variables to dataframe for tbl_summary
@@ -556,4 +553,136 @@ tbl_svysummary( data = analytic_subpop,
   as_gt() %>%
   tab_header("Descriptive Characteristics for Analytic Sample between 20-64 by MET level")
 #gtsave(filename = "Table1_OA_byME1T.docx")
+```
+
+###Creating table2 (Sara)
+
+```{r}
+des <- svydesign(ids = ~1, weights = ~newweight, data = NHANES_analytic)
+analytic_design <- subset(des, subpop6 == 1)
+
+unweighted_n <- NHANES_analytic %>%
+filter(subpop6 == 1) %>%
+count(MET_tertile)
+
+weighted_pct <- as.data.frame(prop.table(svytable(~MET_tertile, analytic_design)) * 100)
+
+descriptive <- unweighted_n %>%
+left_join(weighted_pct, by = "MET_tertile") %>%
+mutate(N_pct = paste0(n, " (", round(Freq, 1), "%)")) %>% select(MET_tertile, N_pct)
+
+
+oa_prev <- svyby(~Osteoarthritis, ~MET_tertile, analytic_design,svyciprop, vartype = "ci", method = "logit")
+
+oa_prev <- oa_prev %>%
+mutate(Prev_CI = paste0(round(Osteoarthritis * 100, 1), "% (",
+                          round(ci_l * 100, 1), "-", round(ci_u * 100, 1), "%)")) %>%
+select(MET_tertile, Prev_CI)
+
+
+crude_model <- svyglm(Osteoarthritis ~ MET_tertile,design = analytic_design, family = quasibinomial())
+
+crude_ci <- exp(cbind(OR = coef(crude_model), confint(crude_model)))
+
+crude_df <- data.frame(MET_tertile = c("Low", "Medium", "High"),Crude_OR = c("1.00 (Reference)",paste0(round(crude_ci[2,1], 2), " (", round(crude_ci[2,2], 2), "-", round(crude_ci[2,3], 2), ")"), paste0(round(crude_ci[3,1], 2), " (", round(crude_ci[3,2], 2), "-", round(crude_ci[3,3], 2), ")")))
+
+
+adj_model <- svyglm(Osteoarthritis ~ MET_tertile + RIDAGEYR + Sex_cat + RE_cat + BMXBMI + smk_status + Diabetes + INDFMPIR,design = analytic_design, family = quasibinomial())
+
+adj_ci <- exp(cbind(OR = coef(adj_model), confint(adj_model)))
+
+adj_df <- data.frame(
+  MET_tertile = c("Low", "Medium", "High"),
+  Adjusted_OR = c("1.00 (Reference)",
+                  paste0(round(adj_ci[2,1], 2), " (", round(adj_ci[2,2], 2), "-", round(adj_ci[2,3], 2), ")"),
+                  paste0(round(adj_ci[3,1], 2), " (", round(adj_ci[3,2], 2), "-", round(adj_ci[3,3], 2), ")"))
+)
+
+table2 <- descriptive %>%
+  left_join(oa_prev, by = "MET_tertile") %>%
+  left_join(crude_df, by = "MET_tertile") %>%
+  left_join(adj_df, by = "MET_tertile") %>%
+  rename(
+    "MET Tertile" = MET_tertile,
+    "N (Weighted %)" = N_pct,
+    "Osteoarthritis Prevalence (95% CI)" = Prev_CI,
+    "Crude OR (95% CI)" = Crude_OR,
+    "Adjusted OR (95% CI)" = Adjusted_OR
+  )
+footnote_text <- paste0(
+  "MET tertiles based on survey-weighted cutpoints: Low ≤", round(cut_lo, 0),
+  ", Medium ", round(cut_lo, 0), "-", round(cut_hi, 0),
+  ", High >", round(cut_hi, 0),
+  ". Adjusted model controls for age, sex, race/ethnicity, BMI, smoking status, diabetes, and income-to-poverty ratio."
+)
+
+table2 %>%
+gt() %>%
+tab_header(
+  title = "Table 2: Association Between Occupational Physical Activity and Osteoarthritis",
+    subtitle = "NHANES 2013-2018, Employed U.S. Adults Aged 20-64"
+  ) %>%
+  tab_footnote(footnote = footnote_text)
+```
+
+##Creating table 3
+
+# Make stratified models
+```{r}
+# Stratum 1 — Health Insurance
+model_male <- svyglm(
+  Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
+                   BMI_cat + smk_status + Sex_cat + 
+                   Income + Edu_yn + Diabetes,
+  design = subset(analytic_subpop, Hinsur_yn == "Yes"),
+  family = quasibinomial()
+)
+
+# Stratum 2 — No Health Insurance
+model_female <- svyglm(
+  Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
+                   BMI_cat + smk_status + Sex_cat + 
+                   Income + Edu_yn + Diabetes,
+  design = subset(analytic_subpop, Hinsur_yn == "No"),
+  family = quasibinomial()
+)
+
+#Stratum 3 -> Has higher education
+model_male <- svyglm(
+  Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
+                   BMI_cat + smk_status + Sex_cat + 
+                   Income + Diabetes + Hinsur_yn,
+  design = subset(analytic_subpop, Edu_yn == "College graduate and above"),
+  family = quasibinomial()
+)
+
+# Stratum 4 — No Higher Education
+model_female <- svyglm(
+  Osteoarthritis ~ MET_tertile + age_cat + RE_cat + 
+                   BMI_cat + smk_status + Sex_cat + 
+                   Income + Hinsur_yn + Diabetes,
+  design = subset(analytic_subpop, Edu_yn == "Less than college education"),
+  family = quasibinomial()
+)
+```
+
+###Obtain counts and proprtions
+```{r}
+# Counts and weighted % for each stratum
+get_counts <- function(des, stratum_var, stratum_val) {
+  sub <- subset(des, get(stratum_var) == stratum_val)
+  
+  # Total N per MET tertile
+  tot <- svyby(~Osteoarthritis, ~MET_tertile, sub, 
+               svytotal, na.rm = TRUE)
+  
+  # Weighted % per MET tertile
+  pct <- svyby(~Osteoarthritis, ~MET_tertile, sub,
+               svymean, na.rm = TRUE)
+  
+  list(total = tot, pct = pct)
+}
+
+counts_male   <- get_counts(subpop_design, "Sex_cat", "Male")
+counts_female <- get_counts(subpop_design, "Sex_cat", "Female")
 ```
